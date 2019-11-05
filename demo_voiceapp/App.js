@@ -1,10 +1,23 @@
 import React, {Component} from 'react';
-import {StyleSheet, Text, View, Image, Button} from 'react-native';
+import {
+  StyleSheet,
+  Text,
+  View,
+  Image,
+  Button,
+  ScrollView,
+  TouchableOpacity,
+} from 'react-native';
 import {GiftedChat} from 'react-native-gifted-chat';
 import {Dialogflow_V2} from 'react-native-dialogflow';
 import {dialogflowConfig} from './env';
 import Voice from 'react-native-voice';
-// import * as Speech from 'react-native-speech';
+import voice_button from './voice_button.jpg';
+import google_assistant_speaking from './google_assistant_speaking.jpg';
+import {Chip} from 'react-native-paper';
+// var Speech = require('react-native-speech');
+// import BpkChip from 'react-native-bpk-component-chip'
+import {RNChipView} from 'react-native-chip-view';
 import Tts from 'react-native-tts';
 
 const BOT_USER = {
@@ -29,15 +42,8 @@ class App extends Component {
         user: BOT_USER,
       },
     ],
-    recognized: '',
-    pitch: '',
-    error: '',
-    end: '',
-    started: '',
-    results: '',
-    partialResults: [],
-    finalResult: '',
-    listeningState: '',
+    imgSource: voice_button,
+    listening: false,
   };
 
   constructor(props) {
@@ -56,12 +62,28 @@ class App extends Component {
     );
   }
 
-  handleGoogleResponse(result) {
+  async handleGoogleResponse(result) {
     let text = 'Sorry, I am unable to connect with Tata Sky.';
     let speech = text;
+    let text1, speech1;
     let ans = {};
     if (result && result.queryResult) {
       if (result.queryResult.webhookPayload) {
+        console.log(result.queryResult.webhookPayload.google);
+        if (
+          result.queryResult.webhookPayload.google.richResponse.items.length ===
+          2
+        ) {
+          text1 = result.queryResult.webhookPayload.google.richResponse.items[1]
+            .simpleResponse.displayText
+            ? result.queryResult.webhookPayload.google.richResponse.items[1]
+                .simpleResponse.displayText
+            : result.queryResult.webhookPayload.google.richResponse.items[1]
+                .simpleResponse.textToSpeech;
+          speech1 =
+            result.queryResult.webhookPayload.google.richResponse.items[1]
+              .simpleResponse.textToSpeech;
+        }
         text = result.queryResult.webhookPayload.google.richResponse.items[0]
           .simpleResponse.displayText
           ? result.queryResult.webhookPayload.google.richResponse.items[0]
@@ -71,23 +93,37 @@ class App extends Component {
         speech =
           result.queryResult.webhookPayload.google.richResponse.items[0]
             .simpleResponse.textToSpeech;
+
         console.log(
-          result.queryResult.webhookPayload.google.richResponse.items[0],
+          result.queryResult.webhookPayload.google.richResponse.items,
         );
       }
     }
     ans.text = text;
+    ans.text1 = text1;
     ans.speech = speech;
-    this.sendBotResponse(ans);
-    // Speech.speak({text: speech})
+    ans.speech1 = speech1;
+    const promise = new Promise(resolve => {
+      console.log('Here in 1');
+      this.sendBotResponse(ans);
+    });
+    console.log('Here 11');
+    const res = await promise;
+    console.log(res);
+    console.log('Here');
+    // Voice.start('en-US');
   }
 
-  onSendSpeech(messages = [], speechResult = []) {
+  onSendText(text) {
+    console.log(text);
+    const speechResult = [];
+    console.log('Here');
+    speechResult.push(text);
     this.setState(previousState => ({
       messages: GiftedChat.append(previousState.messages, speechResult),
     }));
-
-    let message = speechResult[0];
+    console.log('Here 2');
+    let message = text;
     Dialogflow_V2.requestQuery(
       message,
       result => this.handleGoogleResponse(result),
@@ -110,23 +146,79 @@ class App extends Component {
 
   sendBotResponse(ans) {
     let text = ans.text;
+    let text1 = ans.text1;
     let msg = {
       _id: this.state.messages.length + 1,
       text,
       createdAt: new Date(),
       user: BOT_USER,
     };
-
+    let msg1 = {
+      _id: this.state.messages.length + 2,
+      text: text1 ? text1 : '',
+      createdAt: new Date(),
+      user: BOT_USER,
+    };
+    const messagesList = [];
+    if (text1) {
+      messagesList.push(msg1);
+    }
+    messagesList.push(msg);
+    console.log(messagesList);
+    Tts.speak(ans.speech);
     this.setState(previousState => ({
       messages: GiftedChat.append(previousState.messages, [msg]),
     }));
-
-    Tts.speak(ans.speech);
+    if (ans.text1) {
+      setTimeout(() => {
+        // console.log('1 sec wait');
+        if (ans.speech1) Tts.speak(ans.speech1);
+        this.setState(previousState => ({
+          messages: GiftedChat.append(previousState.messages, [msg1]),
+        }));
+      }, 4000);
+    }
   }
+
+  changeImageButton = () => {
+    this.setState({imgSource: google_assistant_speaking});
+    return <Image style={styles.voiceButton} source={this.state.imgSource} />;
+  };
 
   // componentWillUnmount() {
   //   Voice.destroy().then(Voice.removeAllListeners);
   // }
+
+  startListening = async () => {
+    if (this.state.listening) {
+    }
+    await Voice.start('en-US');
+  };
+
+  toggleListening = async () => {
+    const isRecognizing = await Voice.isRecognizing()
+      .then(res => {
+        return res;
+      })
+      .catch(err => {
+        throw new Error(err);
+      });
+    if (isRecognizing) {
+      try {
+        await Voice.cancel();
+      } catch (e) {
+        console.log(e);
+      }
+      this.setState({imgSource: voice_button});
+    } else {
+      try {
+        await Voice.start('en-US');
+      } catch (e) {
+        console.log(e);
+      }
+      this.setState({imgSource: google_assistant_speaking});
+    }
+  };
 
   render() {
     return (
@@ -137,16 +229,84 @@ class App extends Component {
           user={{
             _id: 1,
           }}
+          showUserAvatar={true}
+          alwaysShowSend={true}
         />
-        <Button
-          title="Press me"
+        <ScrollView
+          horizontal={true}
+          style={styles.chipScrollView}
+          contentContainerStyle={{alignContent: 'center'}}>
+          <RNChipView
+            title={'Check Balance'}
+            // theme={0}
+            avatar={false}
+            titleStyle={{padding: 15}}
+            containerStyle={{
+              flexGrow: 1,
+              marginTop: 0,
+              marginBottom: 0,
+              marginRight: 15,
+              marginLeft: 15,
+            }}
+          />
+          {/*<Chip style={styles.chipScrollView} onPress={alert('Hello')}>Monthly Statement</Chip>*/}
+          <RNChipView
+            title={'Mobile Number'}
+            avatar={false}
+            titleStyle={{padding: 15}}
+            containerStyle={{
+              flexGrow: 1,
+              marginTop: 0,
+              marginBottom: 0,
+              marginRight: 15,
+              marginLeft: 15,
+            }}
+            onPress={() => {
+              let speech = "Mobile Number"
+              let message = {
+                _id: this.state.messages.length + 1,
+                text: speech,
+                createdAt: new Date(),
+                user: USER,
+              };
+              this.setState(previousState => ({
+                messages: GiftedChat.append(previousState.messages, message),
+                imgSource: voice_button,
+              }));
+              Dialogflow_V2.requestQuery(
+                speech,
+                result => this.handleGoogleResponse(result),
+                error => console.log(error),
+              );
+            }}
+          />
+          <RNChipView
+            title={'Check Due Date'}
+            avatar={false}
+            titleStyle={{padding: 15}}
+            containerStyle={{
+              flexGrow: 1,
+              marginTop: 0,
+              marginBottom: 0,
+              marginRight: 15,
+              marginLeft: 15,
+            }}
+          />
+        </ScrollView>
+        <TouchableOpacity
           onPress={() => {
             Voice.onSpeechStart = () => console.log('Start');
             Voice.onSpeechEnd = () => console.log('End');
-            Voice.onSpeechError = err => console.log('Error', err);
+            Voice.onSpeechError = err => {
+              this.setState({imgSource: voice_button});
+              console.log('Error', err);
+            };
             Tts.stop();
-            Voice.start('en-US');
-            Voice.onSpeechResults = res => {
+            this.toggleListening();
+          }}>
+          <Image style={styles.voiceButton} source={this.state.imgSource} />
+          {
+            (Voice.onSpeechResults = res => {
               console.log(res);
               let speech = res.value[0];
               let message = {
@@ -157,15 +317,16 @@ class App extends Component {
               };
               this.setState(previousState => ({
                 messages: GiftedChat.append(previousState.messages, message),
+                imgSource: voice_button,
               }));
               Dialogflow_V2.requestQuery(
                 speech,
                 result => this.handleGoogleResponse(result),
                 error => console.log(error),
               );
-            };
-          }}
-        />
+            })
+          }
+        </TouchableOpacity>
       </View>
     );
   }
@@ -175,14 +336,14 @@ const styles = StyleSheet.create({
   voiceButton: {
     padding: 10,
     margin: 5,
-    height: 25,
+    height: 38,
+    alignSelf: 'center',
     width: 25,
     resizeMode: 'stretch',
   },
-  separatorVoice: {
-    backgroundColor: '#fff',
-    width: 1,
-    height: 40,
+  chipScrollView: {
+    flex: 1,
+    maxHeight: 50,
   },
 });
 

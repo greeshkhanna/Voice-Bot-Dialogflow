@@ -40,6 +40,8 @@ target 'demo_voiceapp' do
 
   pod 'TextToSpeech', :path => '../node_modules/react-native-tts'
 
+  pod 'RNVectorIcons', :path => '../node_modules/react-native-vector-icons'
+
   target 'demo_voiceappTests' do
     inherit! :search_paths
     # Pods for testing
